@@ -15,4 +15,10 @@ func main() {
 	gotour.FunctionsNamedResults()
 	gotour.Variables()
 	gotour.VariablesWithInitializers()
+	gotour.BasicTypes()
+	gotour.ZeroValues()
+	gotour.TypeConversions()
+	gotour.TypeInference()
+	gotour.Constants()
+	gotour.NumericConstants()
 }
