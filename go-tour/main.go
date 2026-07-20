@@ -21,4 +21,9 @@ func main() {
 	gotour.TypeInference()
 	gotour.Constants()
 	gotour.NumericConstants()
+	gotour.For()
+	gotour.ForContinued()
+	gotour.If()
+	gotour.IfWithAShortStatement()
+	gotour.IfandElse()
 }
