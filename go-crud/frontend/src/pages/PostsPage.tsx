@@ -6,8 +6,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { postSchema, PostInput } from '../lib/schemas';
 import { Plus, Edit2, Trash2, Search, X } from 'lucide-react';
 import { Post } from '../types/global.types';
+import { useAuthStore } from '../stores/authStore';
+import { toast } from 'sonner';
 
 export const PostsPage: React.FC = () => {
+  const { user, isSuperAdmin, isAdmin } = useAuthStore();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,23 +26,35 @@ export const PostsPage: React.FC = () => {
   const createMutation = useMutation({
     mutationFn: postsApi.create,
     onSuccess: () => {
+      toast.success('Post berhasil dibuat!');
       queryClient.invalidateQueries({ queryKey: ['posts'] });
       closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Gagal membuat post.');
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: PostInput }) => postsApi.update(id, data),
     onSuccess: () => {
+      toast.success('Post berhasil diperbarui!');
       queryClient.invalidateQueries({ queryKey: ['posts'] });
       closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Gagal mengedit post.');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: postsApi.delete,
     onSuccess: () => {
+      toast.success('Post berhasil dihapus!');
       queryClient.invalidateQueries({ queryKey: ['posts'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Gagal menghapus post.');
     },
   });
 
@@ -48,17 +63,22 @@ export const PostsPage: React.FC = () => {
     defaultValues: {
       title: '',
       content: '',
-      status: 'published',
+      status: 'draft',
     },
   });
 
   const openCreateModal = () => {
     setEditingPost(null);
-    form.reset({ title: '', content: '', status: 'published' });
+    form.reset({ title: '', content: '', status: 'draft' });
     setIsModalOpen(true);
   };
 
   const openEditModal = (post: Post) => {
+    const canEdit = post.user_id === user?.id || isSuperAdmin();
+    if (!canEdit) {
+      toast.error(`Akses ditolak: Role ${user?.role} tidak memiliki hak untuk mengedit post milik pengguna lain.`);
+      return;
+    }
     setEditingPost(post);
     form.reset({
       title: post.title,
@@ -66,6 +86,17 @@ export const PostsPage: React.FC = () => {
       status: post.status,
     });
     setIsModalOpen(true);
+  };
+
+  const handleDeletePost = (post: Post) => {
+    const canDelete = post.user_id === user?.id || isAdmin() || isSuperAdmin();
+    if (!canDelete) {
+      toast.error(`Akses ditolak: Role ${user?.role} tidak memiliki hak untuk menghapus post milik pengguna lain.`);
+      return;
+    }
+    if (window.confirm(`Apakah Anda yakin ingin menghapus post "${post.title}"?`)) {
+      deleteMutation.mutate(post.id);
+    }
   };
 
   const closeModal = () => {
@@ -87,10 +118,10 @@ export const PostsPage: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: '700' }}>Posts Management</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Create, edit, and manage your application posts</p>
+          <p style={{ color: 'var(--text-muted)' }}>Manage blog posts and articles</p>
         </div>
         <button onClick={openCreateModal} className="btn btn-primary">
-          <Plus size={18} /> New Post
+          <Plus size={18} /> Create Post
         </button>
       </div>
 
@@ -118,29 +149,54 @@ export const PostsPage: React.FC = () => {
         </div>
       ) : (
         <div className="card-grid">
-          {data?.data.map((post) => (
-            <div key={post.id} className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                <span className={`badge badge-${post.status}`}>{post.status}</span>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => openEditModal(post)} style={{ background: 'none', color: 'var(--text-muted)' }}>
-                    <Edit2 size={16} />
-                  </button>
-                  <button onClick={() => deleteMutation.mutate(post.id)} style={{ background: 'none', color: 'var(--danger)' }}>
-                    <Trash2 size={16} />
-                  </button>
+          {data?.data.map((post) => {
+            const canEdit = post.user_id === user?.id || isSuperAdmin();
+            const canDelete = post.user_id === user?.id || isAdmin() || isSuperAdmin();
+
+            return (
+              <div key={post.id} className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <span className={`badge badge-${post.status}`}>{post.status}</span>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => openEditModal(post)}
+                      disabled={!canEdit}
+                      title={canEdit ? 'Edit Post' : `Role ${user?.role} tidak dapat mengedit post pengguna lain`}
+                      style={{
+                        background: 'none',
+                        color: canEdit ? 'var(--text-muted)' : '#64748b',
+                        opacity: canEdit ? 1 : 0.4,
+                        cursor: canEdit ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDeletePost(post)}
+                      disabled={!canDelete}
+                      title={canDelete ? 'Delete Post' : `Role ${user?.role} tidak dapat menghapus post pengguna lain`}
+                      style={{
+                        background: 'none',
+                        color: canDelete ? 'var(--danger)' : '#64748b',
+                        opacity: canDelete ? 1 : 0.4,
+                        cursor: canDelete ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>{post.title}</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {post.content}
+                </p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Author: {post.author?.name || 'Unknown'}</span>
+                  <span>{post.created_at.split(' ')[0]}</span>
                 </div>
               </div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>{post.title}</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1rem', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {post.content}
-              </p>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Author: {post.author?.name || 'Unknown'}</span>
-                <span>{post.created_at.split(' ')[0]}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

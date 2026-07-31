@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, adminApi } from '../api/endpoints';
 import { useAuthStore } from '../stores/authStore';
-import { Trash2, Search, User as UserIcon, ShieldAlert, ShieldCheck, Edit3, X, Check } from 'lucide-react';
+import { Trash2, Search, User as UserIcon, ShieldAlert, ShieldCheck, Edit3, X } from 'lucide-react';
 import { User, UserRole } from '../types/global.types';
+import { toast } from 'sonner';
 
 export const UsersPage: React.FC = () => {
   const [page, setPage] = useState(1);
@@ -12,7 +13,6 @@ export const UsersPage: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('user');
-  const [errorMessage, setErrorMessage] = useState('');
 
   const { user: currentUser, isSuperAdmin } = useAuthStore();
   const queryClient = useQueryClient();
@@ -25,22 +25,22 @@ export const UsersPage: React.FC = () => {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => (isSuperAdmin() ? adminApi.deleteUser(id) : usersApi.delete(id)),
     onSuccess: () => {
+      toast.success('Pengguna berhasil dihapus!');
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setErrorMessage('');
     },
     onError: (err: any) => {
-      setErrorMessage(err.response?.data?.message || 'Failed to delete user');
+      toast.error(err.response?.data?.message || 'Gagal menghapus pengguna.');
     },
   });
 
   const changeRoleMutation = useMutation({
     mutationFn: ({ id, role }: { id: string; role: UserRole }) => adminApi.changeRole(id, role),
     onSuccess: () => {
+      toast.success('Role pengguna berhasil diperbarui!');
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setErrorMessage('');
     },
     onError: (err: any) => {
-      setErrorMessage(err.response?.data?.message || 'Failed to change user role');
+      toast.error(err.response?.data?.message || 'Gagal mengubah role pengguna.');
     },
   });
 
@@ -48,20 +48,34 @@ export const UsersPage: React.FC = () => {
     mutationFn: ({ id, name, email, role }: { id: string; name: string; email: string; role: UserRole }) =>
       adminApi.updateUser(id, { name, email, role }),
     onSuccess: () => {
+      toast.success('Data pengguna berhasil diperbarui!');
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setEditingUser(null);
-      setErrorMessage('');
     },
     onError: (err: any) => {
-      setErrorMessage(err.response?.data?.message || 'Failed to update user');
+      toast.error(err.response?.data?.message || 'Gagal mengedit data pengguna.');
     },
   });
 
   const handleEditClick = (u: User) => {
+    if (!isSuperAdmin()) {
+      toast.error(`Akses ditolak: Role ${currentUser?.role} tidak memiliki izin untuk mengedit pengguna.`);
+      return;
+    }
     setEditingUser(u);
     setEditName(u.name);
     setEditEmail(u.email);
     setEditRole(u.role);
+  };
+
+  const handleDeleteUser = (u: User) => {
+    if (!isSuperAdmin()) {
+      toast.error(`Akses ditolak: Role ${currentUser?.role} tidak memiliki izin untuk menghapus pengguna.`);
+      return;
+    }
+    if (confirm(`Apakah Anda yakin ingin menghapus user ${u.name}?`)) {
+      deleteMutation.mutate(u.id);
+    }
   };
 
   const handleSaveUser = (e: React.FormEvent) => {
@@ -89,35 +103,21 @@ export const UsersPage: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: '700' }}>Users Management</h1>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: '700' }}>Users Directory</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           {isSuperAdmin()
             ? 'Superadmin Access: Manage users, assign roles, and modify details'
-            : 'System User Directory'}
+            : 'System User Directory (Management restricted to Superadmin)'}
         </p>
       </div>
 
-      {errorMessage && (
-        <div style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.15)',
-          border: '1px solid #ef4444',
-          color: '#ef4444',
-          padding: '0.75rem 1rem',
-          borderRadius: '8px',
-          marginBottom: '1.5rem',
-          fontSize: '0.875rem',
-        }}>
-          {errorMessage}
-        </div>
-      )}
-
-      {/* Search */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
+      {/* Search Filter */}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
           <input
             type="text"
-            placeholder="Search users by name or email..."
+            placeholder="Search users..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="form-input"
@@ -126,24 +126,13 @@ export const UsersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Edit User Modal */}
+      {/* Modal Edit User */}
       {editingUser && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.6)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-        }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '450px', padding: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: '600' }}>Edit User (Superadmin)</h2>
-              <button onClick={() => setEditingUser(null)} className="btn" style={{ padding: '0.2rem' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '500px', padding: '2rem', background: 'var(--bg-secondary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Edit User Details</h2>
+              <button onClick={() => setEditingUser(null)} style={{ background: 'none', color: 'var(--text-muted)' }}>
                 <X size={20} />
               </button>
             </div>
@@ -151,46 +140,22 @@ export const UsersPage: React.FC = () => {
             <form onSubmit={handleSaveUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label className="form-label">Full Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  style={{ width: '100%' }}
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
+                <input type="text" className="form-input" style={{ width: '100%' }} value={editName} onChange={(e) => setEditName(e.target.value)} required />
               </div>
-
               <div>
                 <label className="form-label">Email Address</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  style={{ width: '100%' }}
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  required
-                />
+                <input type="email" className="form-input" style={{ width: '100%' }} value={editEmail} onChange={(e) => setEditEmail(e.target.value)} required />
               </div>
-
               <div>
                 <label className="form-label">Role</label>
-                <select
-                  className="form-input"
-                  style={{ width: '100%' }}
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as UserRole)}
-                >
+                <select className="form-input" style={{ width: '100%' }} value={editRole} onChange={(e) => setEditRole(e.target.value as UserRole)}>
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                   <option value="superadmin">Superadmin</option>
                 </select>
               </div>
-
               <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button type="button" onClick={() => setEditingUser(null)} className="btn btn-secondary">
-                  Cancel
-                </button>
+                <button type="button" onClick={() => setEditingUser(null)} className="btn btn-secondary">Cancel</button>
                 <button type="submit" disabled={updateUserMutation.isPending} className="btn btn-primary">
                   {updateUserMutation.isPending ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -211,7 +176,7 @@ export const UsersPage: React.FC = () => {
                 <th>User</th>
                 <th>Role</th>
                 <th>Joined Date</th>
-                {isSuperAdmin() && <th style={{ textAlign: 'right' }}>Actions</th>}
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -219,35 +184,27 @@ export const UsersPage: React.FC = () => {
                 const roleBadge = getRoleBadgeStyle(u.role);
                 const BadgeIcon = roleBadge.icon;
                 const isSelf = u.id === currentUser?.id;
+                const canManage = isSuperAdmin();
 
                 return (
                   <tr key={u.id}>
                     <td style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        backgroundColor: roleBadge.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        width: '36px', height: '36px', borderRadius: '50%', backgroundColor: roleBadge.color,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         <BadgeIcon size={18} color="white" />
                       </div>
                       <div>
                         <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {u.name}
-                          {isSelf && (
-                            <span style={{ fontSize: '0.7rem', backgroundColor: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                              You
-                            </span>
-                          )}
+                          {isSelf && <span style={{ fontSize: '0.7rem', backgroundColor: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>You</span>}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.email}</div>
                       </div>
                     </td>
                     <td>
-                      {isSuperAdmin() && !isSelf ? (
+                      {canManage && !isSelf ? (
                         <select
                           value={u.role}
                           onChange={(e) => changeRoleMutation.mutate({ id: u.id, role: e.target.value as UserRole })}
@@ -268,15 +225,8 @@ export const UsersPage: React.FC = () => {
                         </select>
                       ) : (
                         <span style={{
-                          backgroundColor: roleBadge.bg,
-                          color: roleBadge.color,
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '20px',
-                          fontSize: '0.8rem',
-                          fontWeight: '600',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.3rem',
+                          backgroundColor: roleBadge.bg, color: roleBadge.color, padding: '0.25rem 0.75rem',
+                          borderRadius: '20px', fontSize: '0.8rem', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                         }}>
                           <BadgeIcon size={12} />
                           {roleBadge.label}
@@ -284,38 +234,63 @@ export const UsersPage: React.FC = () => {
                       )}
                     </td>
                     <td>{u.created_at}</td>
-                    {isSuperAdmin() && (
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => handleEditClick(u)}
-                            className="btn btn-secondary"
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                          >
-                            <Edit3 size={14} /> Edit
-                          </button>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => handleEditClick(u)}
+                          disabled={!canManage}
+                          title={canManage ? 'Edit User' : `Role ${currentUser?.role} tidak dapat mengedit data pengguna`}
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '0.4rem 0.8rem',
+                            fontSize: '0.8rem',
+                            opacity: canManage ? 1 : 0.4,
+                            cursor: canManage ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          <Edit3 size={14} /> Edit
+                        </button>
 
-                          {!isSelf && u.role !== 'superadmin' && (
-                            <button
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete user ${u.name}?`)) {
-                                  deleteMutation.mutate(u.id);
-                                }
-                              }}
-                              className="btn btn-danger"
-                              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                            >
-                              <Trash2 size={14} /> Delete
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={!canManage || isSelf}
+                          title={canManage && !isSelf ? 'Delete User' : `Role ${currentUser?.role} tidak dapat menghapus pengguna`}
+                          className="btn btn-danger"
+                          style={{
+                            padding: '0.4rem 0.8rem',
+                            fontSize: '0.8rem',
+                            opacity: canManage && !isSelf ? 1 : 0.4,
+                            cursor: canManage && !isSelf ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data?.meta && data.meta.total_page > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '2rem' }}>
+          {Array.from({ length: data.meta.total_page }, (_, i) => i + 1).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPage(p)}
+              className="btn btn-secondary"
+              style={{
+                backgroundColor: page === p ? 'var(--accent-primary)' : undefined,
+                color: page === p ? 'white' : undefined,
+              }}
+            >
+              {p}
+            </button>
+          ))}
         </div>
       )}
     </div>

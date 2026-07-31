@@ -5,8 +5,10 @@ import { loginSchema, registerSchema, LoginInput, RegisterInput } from '../lib/s
 import { authApi } from '../api/endpoints';
 import { useAuthStore } from '../stores/authStore';
 import { Lock, Mail, User as UserIcon, Sparkles } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
 
 export const AuthPage: React.FC = () => {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +28,7 @@ export const AuthPage: React.FC = () => {
       setErrorMsg('');
       const res = await authApi.login(data);
       setAuth(res.user, res.access_token, res.refresh_token);
+      navigate({ to: '/admin/dashboard' });
     } catch (err: any) {
       setErrorMsg(err.response?.data?.message || 'Login failed. Please check credentials.');
     } finally {
@@ -39,6 +42,7 @@ export const AuthPage: React.FC = () => {
       setErrorMsg('');
       const res = await authApi.register(data);
       setAuth(res.user, res.access_token, res.refresh_token);
+      navigate({ to: '/admin/dashboard' });
     } catch (err: any) {
       setErrorMsg(err.response?.data?.message || 'Registration failed.');
     } finally {
